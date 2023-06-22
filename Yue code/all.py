@@ -76,7 +76,35 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     # if trim:
     #     delta=clamp(delta,0-X,1-X)
     return delta.detach()
-   
+
+def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+    # print(method)
+    delta = torch.zeros_like(X, requires_grad=True)
+    output = model(X + delta)
+    batch_size=X.shape[0]
+    channels=len(X.shape)-1
+    eps_for_division=1e-10
+    shape=(batch_size,)+(1,)*channels
+    # print(output)
+    y = y.long()
+    loss = F.cross_entropy(output, y)
+    loss.backward()
+    grad = torch.sign(delta.grad.detach())
+
+    # manually change this part for on-manifold attack:
+    if method == '1':
+        grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+    if method == '3':
+        grad = torch.matmul( grad,torch.tensor( m_res,dtype=torch.float ).cuda())
+
+    grad_norms = torch.norm(grad.view(batch_size, -1), p=2, dim=1) + eps_for_division
+    grad = grad / grad_norms.view(shape)
+
+    delta.data = epsilon * grad
+    # if trim:
+    #     delta=clamp(delta,0-X,1-X)
+    return delta.detach()
+
 def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method='1'):
     model.eval()
     test_loss = 0
