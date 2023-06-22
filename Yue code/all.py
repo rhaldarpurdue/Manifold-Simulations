@@ -329,3 +329,4 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=1000, shuffle=Fa
 lr = float(sys.argv[3])
 epochs = int(sys.argv[5])
 train(lr,epochs,attack='l2',epsilon=epsilon)
+  
