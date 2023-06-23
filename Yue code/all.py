@@ -59,14 +59,18 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
         loss.backward()
         grad = delta.grad.detach()
 
+        if method == '4':
+            grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+        if method == '5':
+            grad.requires_grad = False
+            grad -= torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+
         d = delta + alpha *grad/(torch.norm(grad.view(batch_size, -1), p=2, dim=1).view(shape2)+0.0000001)
         d_norms = torch.norm(d.view(batch_size, -1), p=2, dim=1)
         factor = epsilon / (d_norms+0.0000001)
         factor = torch.min(factor, torch.ones_like(d_norms))
         d = d * factor.view(shape2)
-        # print(epsilon)
-        # print(d_norms)
-        # exit()
+        
         delta.data = d # used for loss computation
         # manually change this part for on-manifold attack:
     if method == '1':
@@ -83,43 +87,50 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     return delta.detach()
 
 
-# def attack_fgsm(model, X, y, epsilon,trim,method='2'):
-#     model.eval()
-#     max_loss = torch.zeros(y.shape[0]).cuda()
-#     max_delta = torch.zeros_like(X).cuda()
+def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+    model.eval()
+    max_loss = torch.zeros(y.shape[0]).cuda()
+    max_delta = torch.zeros_like(X).cuda()
     
-#     alpha = epsilon / 20 * 3
-#     attack_iters=20
-#     for _ in range(1):
-#         delta = torch.zeros_like(X).cuda()
-#         if trim:
-#             delta.data = clamp(delta, 0-X, 1-X)
+    alpha = epsilon / 20 * 3
+    attack_iters=20
+    for _ in range(1):
+        delta = torch.zeros_like(X).cuda()
+        if trim:
+            delta.data = clamp(delta, 0-X, 1-X)
         
-#         delta.requires_grad = True
-#         for _ in range(attack_iters):
-#             output = model(X + delta)
-#             loss = F.cross_entropy(output, y)
-#             loss.backward()
-#             grad = delta.grad.detach()
-#             d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
-#             if trim:
-#                 d = clamp(d, 0-X, 1-X)
-#             delta.data = d # used for loss computation
-#             delta.grad.zero_()
-#         all_loss = F.cross_entropy(model(X+delta), y, reduction='none')
-#         max_delta[all_loss >= max_loss] = delta.detach()[all_loss >= max_loss]
-#         max_loss = torch.max(max_loss, all_loss)
+        delta.requires_grad = True
+        for _ in range(attack_iters):
+            output = model(X + delta)
+            loss = F.cross_entropy(output, y)
+            loss.backward()
+            grad = delta.grad.detach()
 
-#     if method == '1':
-#         max_delta.detach()
-#         max_delta = torch.matmul( delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
-#     if method == '3':
-#         max_delta.detach()
-#         max_delta.requires_grad = False
-#         max_delta -= torch.matmul( max_delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
+            if method == '4':
+                grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+            if method == '5':
+                grad.requires_grad = False
+                grad -= torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
 
-#     model.train()
-#     return max_delta
+            d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
+            if trim:
+                d = clamp(d, 0-X, 1-X)
+            delta.data = d # used for loss computation
+            delta.grad.zero_()
+        all_loss = F.cross_entropy(model(X+delta), y, reduction='none')
+        max_delta[all_loss >= max_loss] = delta.detach()[all_loss >= max_loss]
+        max_loss = torch.max(max_loss, all_loss)
+
+    if method == '1':
+        max_delta.detach()
+        max_delta = torch.matmul( delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
+    if method == '3':
+        max_delta.detach()
+        max_delta.requires_grad = False
+        max_delta -= torch.matmul( max_delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
+
+    model.train()
+    return max_delta
 
 def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method='1'):
     model.eval()
@@ -220,14 +231,17 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             # print(delta)
         
         if epoch >= epochs-1:
-            for eps in np.array([i/10 for i in range(10)]+
-                                [i/10+1 for i in range(10)]+
-                                [i/10+2 for i in range(10)]+
-                                [i/1+2 for i in range(10)]+[100]):
-            # for eps in np.array([i/100+0.2 for i in range(1,10)]+
-            #                 [i/100+0.3 for i in range(10)]+
-            #                 [i/100+0.4 for i in range(10)]+
-            #                 [i/100+0.5 for i in range(10)])*((codim/D)**0.5):
+            # for eps in np.array([i/10 for i in range(10)]+
+            #                     [i/10+1 for i in range(10)]+
+            #                     [i/10+2 for i in range(10)]+
+            #                     [i/10+3 for i in range(10)]+
+            #                     [i/1+2 for i in range(10)]+[100]):
+            for eps in np.array([i/100+0.2 for i in range(1,10)]+
+                            [i/100+0.3 for i in range(10)]+
+                            [i/100+0.4 for i in range(10)]+
+                            [i/100+0.5 for i in range(10)]+
+                            [i/10 for i in range(20)]
+                            )*((codim/D)**0.5):
                             # [i/10+2 for i in range(10)]+
                             # [i/1+2 for i in range(10)]):
                 print(eps)
@@ -236,12 +250,14 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='2')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='3')
+                test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
+                test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
 
             delta = attack_fgsm(model, X, y, eps_test, False)
             # print(delta)
             delta = delta.cpu()
-            delta = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
-            print(sum(delta[0]**2)/(eps_test**2))
+            delta_ = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
+            print(sum(delta_[0]**2)/(eps_test**2),sum(delta_[0]**2)/sum(delta[0]**2) )
 
         model.train()
     
