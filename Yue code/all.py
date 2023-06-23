@@ -332,7 +332,6 @@ beta = np.ones(codim)/np.sqrt(codim)
 x=np.random.randn(samples*k,codim)*std_dev/np.sqrt(codim)
 y=np.random.randn(samples*k)
 mu=[]
-shift = np.random.randn(codim)/np.sqrt(codim)
 sign = []
 for i in range(k):
     mu.append( np.random.randn(codim) )
@@ -340,11 +339,14 @@ for i in range(k):
     start = int((i-1)*samples)
     end = int(i*samples)
     for j in range(start,end):
-        x[j,:] += mu[i] + shift
+        x[j,:] += mu[i] 
         y[j] = sign[i]
 
+shift = np.random.randn(D)/np.sqrt(D)
 
 x= np.matmul(x, m[:codim,:])
+for i in range(len(x[:,0])):
+    x[i,] += shift
 
 y = to_onehot(y, 2)
 
@@ -355,18 +357,22 @@ for i in range(k):
     end = int(i*(1000/k))
     # print(start,end)
     for j in range(start,end):
-        x_test[j,:] += mu[i] + shift
+        x_test[j,:] += mu[i] 
         y_test[j] = sign[i]    
 
 x_test= np.matmul(x_test, m[:codim,:])
+
+for i in range(len(x_test[:,0])):
+    x_test[i,] += shift
+
 y_test = to_onehot(y_test, 3)
 
 print(codim)
 
 train_data=torch.utils.data.TensorDataset(torch.from_numpy(x),y)
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=samples*k, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=10, shuffle=True)
 test_data=torch.utils.data.TensorDataset(torch.from_numpy(x_test),y_test)
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=1000, shuffle=False)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=10, shuffle=False)
 
 
 lr = float(sys.argv[3])
