@@ -42,10 +42,11 @@ def to_onehot(y, num_classes):
 def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     # print(method)
     model.eval()
-    alpha = epsilon / 20 * 3
+    attack_iters = 1
+    alpha = epsilon / attack_iters * 3
     delta = torch.zeros_like(X, requires_grad=True)
 
-    for iter_ in range(20):
+    for iter_ in range(attack_iters):
         output = model(X + delta)
         batch_size=X.shape[0]
         channels=len(X.shape)-1
@@ -81,33 +82,44 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     #     delta=clamp(delta,0-X,1-X)
     return delta.detach()
 
-# def attack_fgsm_linf(model, X, y, epsilon,trim,method='2'):
-#     # print(method)
-#     delta = torch.zeros_like(X, requires_grad=True)
-#     output = model(X + delta)
-#     batch_size=X.shape[0]
-#     channels=len(X.shape)-1
-#     eps_for_division=1e-10
-#     shape=(batch_size,)+(1,)*channels
-#     # print(output)
-#     y = y.long()
-#     loss = F.cross_entropy(output, y)
-#     loss.backward()
-#     grad = torch.sign(delta.grad.detach())
 
-#     # manually change this part for on-manifold attack:
+# def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+#     model.eval()
+#     max_loss = torch.zeros(y.shape[0]).cuda()
+#     max_delta = torch.zeros_like(X).cuda()
+    
+#     alpha = epsilon / 20 * 3
+#     attack_iters=20
+#     for _ in range(1):
+#         delta = torch.zeros_like(X).cuda()
+#         if trim:
+#             delta.data = clamp(delta, 0-X, 1-X)
+        
+#         delta.requires_grad = True
+#         for _ in range(attack_iters):
+#             output = model(X + delta)
+#             loss = F.cross_entropy(output, y)
+#             loss.backward()
+#             grad = delta.grad.detach()
+#             d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
+#             if trim:
+#                 d = clamp(d, 0-X, 1-X)
+#             delta.data = d # used for loss computation
+#             delta.grad.zero_()
+#         all_loss = F.cross_entropy(model(X+delta), y, reduction='none')
+#         max_delta[all_loss >= max_loss] = delta.detach()[all_loss >= max_loss]
+#         max_loss = torch.max(max_loss, all_loss)
+
 #     if method == '1':
-#         grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+#         max_delta.detach()
+#         max_delta = torch.matmul( delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
 #     if method == '3':
-#         grad = torch.matmul( grad,torch.tensor( m_res,dtype=torch.float ).cuda())
+#         max_delta.detach()
+#         max_delta.requires_grad = False
+#         max_delta -= torch.matmul( max_delta,torch.tensor( m_proj,dtype=torch.float ).cuda())
 
-#     grad_norms = torch.norm(grad.view(batch_size, -1), p=2, dim=1) + eps_for_division
-#     grad = grad / grad_norms.view(shape)
-
-#     delta.data = epsilon * grad
-#     # if trim:
-#     #     delta=clamp(delta,0-X,1-X)
-#     return delta.detach()
+#     model.train()
+#     return max_delta
 
 def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method='1'):
     model.eval()
@@ -159,7 +171,8 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
     criterion = nn.CrossEntropyLoss()
     opt = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
     fname='manifold_model/circle_codim-'+str(codim)+'nclass-'+str(n_class)+'.pth'
-    Loss,acc=pgd_robustness(model,train_loader, attack='l2',epsilon=eps_test,method='1')
+    Loss,acc=0,0
+    # pgd_robustness(model,train_loader, attack='l2',epsilon=eps_test,method='1')
     # print(Loss,acc)
     logger.info('Epoch \t Time \t LR \t \t Train Loss \t Train Acc \t Test Loss \t Test Acc')
     for epoch in range(epochs):
@@ -200,17 +213,23 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
         Loss, acc = 0,0
         train_time = time.time()
 
-        if epoch % 10 == 0:
+        if epoch % 100 == 0 or epoch <= 100:
             logger.info('%d \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
                 epoch, train_time - start_time, lr, train_loss/train_n, train_acc/train_n,Loss, acc)
             model.eval()
             # print(delta)
         
         if epoch >= epochs-1:
-            for eps in np.array([i/100 for i in range(10)]+
-                                [i/10 for i in range(10)]+
+            for eps in np.array([i/10 for i in range(10)]+
                                 [i/10+1 for i in range(10)]+
-                                [i/1 for i in range(10)]):
+                                [i/10+2 for i in range(10)]+
+                                [i/1+2 for i in range(10)]+[100]):
+            # for eps in np.array([i/100+0.2 for i in range(1,10)]+
+            #                 [i/100+0.3 for i in range(10)]+
+            #                 [i/100+0.4 for i in range(10)]+
+            #                 [i/100+0.5 for i in range(10)])*((codim/D)**0.5):
+                            # [i/10+2 for i in range(10)]+
+                            # [i/1+2 for i in range(10)]):
                 print(eps)
                 # eps = eps/10
                 # eps = eps*1000
@@ -275,8 +294,8 @@ epsilon=0.0
 noise=1
 eps_test=float(sys.argv[4])
 D=int(sys.argv[1])
-k=20
-codim=10
+k=10
+codim=50
 # m = ortho_group.rvs(dim=D)
 m = np.random.randn(codim,D)/np.sqrt(D)
 
@@ -320,7 +339,7 @@ for i in range(k):
     end = int(i*(1000/k))
     # print(start,end)
     for j in range(start,end):
-        x_test[j,:] += mu[i]
+        x_test[j,:] += mu[i] + shift
         y_test[j] = sign[i]    
 
 x_test= np.matmul(x_test, m[:codim,:])
