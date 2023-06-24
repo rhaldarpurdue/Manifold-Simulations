@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.cm as cm
+import copy
 # import torchattacks
 
 import logging
@@ -231,16 +232,24 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             # print(delta)
         
         if epoch >= epochs-1:
+        # if (epoch +1 )% 1000 == 0:
+            delta = attack_fgsm(model, X, y, eps_test, False)
+            # print(delta)
+            delta = delta.cpu()
+            delta_ = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
+            print(sum(delta_[0]**2)/(eps_test**2),sum(delta_[0]**2)/sum(delta[0]**2) )
+            model1 = copy.deepcopy(model)
+            model.eval()
             # for eps in np.array([i/10 for i in range(10)]+
             #                     [i/10+1 for i in range(10)]+
             #                     [i/10+2 for i in range(10)]+
             #                     [i/10+3 for i in range(10)]+
             #                     [i/1+2 for i in range(10)]+[100]):
-            for eps in np.array([i/100+0.2 for i in range(1,10)]+
-                            [i/100+0.3 for i in range(10)]+
+            for eps in np.array(
+                            
                             [i/100+0.4 for i in range(10)]+
                             [i/100+0.5 for i in range(10)]+
-                            [i/10 for i in range(20)]
+                            [i/10+0.4 for i in range(20)]
                             )*((codim/D)**0.5):
                             # [i/10+2 for i in range(10)]+
                             # [i/1+2 for i in range(10)]):
@@ -253,11 +262,9 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
 
-            delta = attack_fgsm(model, X, y, eps_test, False)
-            # print(delta)
-            delta = delta.cpu()
-            delta_ = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
-            print(sum(delta_[0]**2)/(eps_test**2),sum(delta_[0]**2)/sum(delta[0]**2) )
+            
+            model = model1
+            opt = torch.optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
 
         model.train()
     

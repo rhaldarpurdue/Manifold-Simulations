@@ -1,4 +1,5 @@
 # python all.py $D $method $lr $eps_test $epoch
+# for D in 50 100 200 500 1000 2000 3000 5000 7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 ; done; done
 
 import numpy as np
 import torch 
@@ -31,6 +32,8 @@ from scipy.stats import ortho_group
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
+    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
+                    filemode='w',
     format='[%(asctime)s] - %(message)s',
     datefmt='%Y/%m/%d %H:%M:%S',
     level=logging.DEBUG)
@@ -313,9 +316,10 @@ m_res = np.eye(D) - m_proj
 
 #codim=0
 # Create gaussian clusters
-torch.manual_seed(1)
-random.seed(1)
-np.random.seed(1)
+seed=int(sys.argv[6])
+torch.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
 beta = np.ones(codim)/np.sqrt(codim)
 
 x=np.random.randn(samples*k,codim)*std_dev/np.sqrt(codim)
