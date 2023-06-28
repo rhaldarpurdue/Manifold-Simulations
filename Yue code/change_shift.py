@@ -1,5 +1,6 @@
 # python all.py $D $method $lr $eps_test $epoch
-# for D in 50 100 200 500 1000 2000 3000 5000 7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 ; done; done
+# for D in 50 500 1000 2000 3000 5000 7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 $seed; done; done
+# for D in  7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 $seed; done; done
 
 import numpy as np
 import torch 
@@ -12,6 +13,8 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.cm as cm
 # import torchattacks
+from torch.autograd import Variable
+import torch.optim as optim
 
 import logging
 import time
@@ -28,15 +31,21 @@ from utils import *
 import sys
 import copy
 from scipy.stats import ortho_group
+from imp import reload
+
+reload(logging)
 
 logger = logging.getLogger(__name__)
 
+h=20000
+
 logging.basicConfig(
-    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
+    # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
+    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_'+str(h)+'_l2.txt',
                     filemode='w',
+    level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
-    datefmt='%Y/%m/%d %H:%M:%S',
-    level=logging.DEBUG)
+    datefmt='%Y/%m/%d %H:%M:%S')
 
 def to_onehot(y, num_classes):
     y = torch.tensor(y,dtype=torch.long)
@@ -45,10 +54,11 @@ def to_onehot(y, num_classes):
 def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     # print(method)
     model.eval()
-    alpha = epsilon / 20 * 3
+    attack_iters = 20
+    alpha = epsilon / attack_iters * 3
     delta = torch.zeros_like(X, requires_grad=True)
 
-    for iter_ in range(20):
+    for iter_ in range(attack_iters):
         output = model(X + delta)
         batch_size=X.shape[0]
         channels=len(X.shape)-1
@@ -72,9 +82,7 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
         factor = epsilon / (d_norms+0.0000001)
         factor = torch.min(factor, torch.ones_like(d_norms))
         d = d * factor.view(shape2)
-        # print(epsilon)
-        # print(d_norms)
-        # exit()
+        
         delta.data = d # used for loss computation
         # manually change this part for on-manifold attack:
     if method == '1':
@@ -91,8 +99,10 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     return delta.detach()
 
 
-def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+def attack_fgsm_linf(model, X, y, epsilon,trim,method='2'):
     model.eval()
+    model.first.weight.requires_grad = False
+    model.second.weight.requires_grad = False
     max_loss = torch.zeros(y.shape[0]).cuda()
     max_delta = torch.zeros_like(X).cuda()
     
@@ -109,6 +119,12 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
             loss = F.cross_entropy(output, y)
             loss.backward()
             grad = delta.grad.detach()
+            if method == '4':
+                grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+            if method == '5':
+                grad.requires_grad = False
+                grad -= torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ).cuda())
+
             d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
             if trim:
                 d = clamp(d, 0-X, 1-X)
@@ -170,10 +186,33 @@ def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method
 def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
     xdim=x.shape[1]
     if LOSS=='mse':
-        model=two_layer_relu_single_output_mse(xdim,'relu',20000).cuda()
+        model=two_layer_relu_single_output_mse(xdim,'relu',h).cuda()
     else:
-        model=two_layer_relu_single_output_mse(xdim,'relu',20000, n_class).cuda()
+        model=two_layer_relu_single_output_mse(xdim,'relu',h, n_class).cuda()
 
+    # try:
+    #     PATH = f'/scratch/gilbreth/xing49/change_shift{D}_{seed}.pth'
+    #     params = torch.load(PATH)
+    #     model.load_state_dict(params)
+    #     for eps in np.array([i/10 for i in range(80)]):
+    #     # for eps in np.array([i/100+0.2 for i in range(1,80)]+
+    #     #                 [i/10+1 for i in range(10)]+
+    #     #                 [i/10+2 for i in range(10)])*((codim/D)**0.5):
+    #         logging.info(eps)
+    #         test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
+    #         test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='2')
+    #         test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='3')
+    #         test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
+    #         test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
+
+    #     # delta = attack_fgsm(model, X, y, eps_test, False)
+    #     # print(delta)
+    #     # delta = delta.cpu()
+    #     # delta = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
+    #     # logging.info('%.4f',sum(delta[0]**2)/(eps_test**2))   
+    #     exit()    
+    # except:
+    #     pass
 
     model_init = copy.deepcopy(model)
     criterion = nn.CrossEntropyLoss()
@@ -228,30 +267,31 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             # print(delta)
         
         if epoch >= epochs-1:
-            # for eps in np.array([i/10 for i in range(10)]+
-            #                     [i/10+1 for i in range(10)]+
-            #                     [i/10+2 for i in range(10)]+
-            #                     [i/1+2 for i in range(10)]):
-            for eps in np.array([i/100+0.2 for i in range(1,10)]+
-                            [i/100+0.3 for i in range(10)]+
-                            [i/100+0.4 for i in range(10)]+
-                            [i/100+0.5 for i in range(10)])*((codim/D)**0.5):
-                            # [i/10+2 for i in range(10)]+
+            # torch.save(model.state_dict(), PATH)
+            # for eps in np.array([i/40 for i in range(1,250)]):
+            for eps in np.array([i*2. for i in range(1,100)])/np.sqrt(D):
+            # for eps in np.array([i/100+0.2 for i in range(1,80)]+
+            #                 [i/10+1 for i in range(10)]+
+            #                 [i/10+2 for i in range(10)])*((codim/D)**0.5):
                             # [i/1+2 for i in range(10)]):
-                print(eps)
+                logging.info(eps)
                 # eps = eps/10
                 # eps = eps*1000
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='2')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='3')
+                test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
+                test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
 
             delta = attack_fgsm(model, X, y, eps_test, False)
             # print(delta)
             delta = delta.cpu()
             delta = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
-            print(sum(delta[0]**2)/(eps_test**2))
+            logging.info('%.4f',sum(delta[0]**2)/(eps_test**2))
+            logging.info('%d',D)
 
         model.train()
+    
     
     return model
 
@@ -293,7 +333,7 @@ def test(model, attack, epsilon, LOSS,print_=False,method='1'):
 loss_lst=[]
 acc_lst=[]
 n_class=2
-samples=10
+samples=2
 # samples=10000
 dummy_scalar=1
 std_dev=1
@@ -303,7 +343,7 @@ noise=1
 eps_test=float(sys.argv[4])
 D=int(sys.argv[1])
 k=10
-codim=50
+codim=10
 # m = ortho_group.rvs(dim=D)
 m = np.random.randn(codim,D)/np.sqrt(D)
 
@@ -330,7 +370,7 @@ shift = []
 sign = []
 for i in range(k):
     mu.append( np.random.randn(codim) )
-    sign.append( k % 2)
+    sign.append( i % 2)
     start = int((i-1)*samples)
     end = int(i*samples)
     for j in range(start,end):
