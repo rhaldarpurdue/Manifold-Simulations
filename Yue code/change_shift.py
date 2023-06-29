@@ -37,12 +37,12 @@ reload(logging)
 
 logger = logging.getLogger(__name__)
 
-h=20000
+h=int(sys.argv[7])
 
 logging.basicConfig(
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
-    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_'+str(h)+'_l2.txt',
-                    filemode='w',
+    # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_'+str(h)+'_l2.txt',
+                    # filemode='w',
     level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
     datefmt='%Y/%m/%d %H:%M:%S')
@@ -269,7 +269,7 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
         if epoch >= epochs-1:
             # torch.save(model.state_dict(), PATH)
             # for eps in np.array([i/40 for i in range(1,250)]):
-            for eps in np.array([i*2. for i in range(1,100)])/np.sqrt(D):
+            for eps in np.array([i*5. for i in range(1,100)])/10+3:
             # for eps in np.array([i/100+0.2 for i in range(1,80)]+
             #                 [i/10+1 for i in range(10)]+
             #                 [i/10+2 for i in range(10)])*((codim/D)**0.5):
@@ -342,8 +342,9 @@ epsilon=0.0
 noise=1
 eps_test=float(sys.argv[4])
 D=int(sys.argv[1])
+print(D)
 k=10
-codim=10
+codim=50
 # m = ortho_group.rvs(dim=D)
 m = np.random.randn(codim,D)/np.sqrt(D)
 
@@ -414,7 +415,7 @@ print(codim)
 train_data=torch.utils.data.TensorDataset(torch.from_numpy(x),y)
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=samples*k, shuffle=True)
 test_data=torch.utils.data.TensorDataset(torch.from_numpy(x_test),y_test)
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=1000, shuffle=False)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=100, shuffle=False)
 
 
 lr = float(sys.argv[3])
