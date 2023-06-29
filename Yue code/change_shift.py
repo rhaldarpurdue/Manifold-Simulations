@@ -1,4 +1,4 @@
-# python all.py $D $method $lr $eps_test $epoch
+# python change_shift.py $D $codim $lr $eps_test $epoch $h $shift_method $n
 # for D in 50 500 1000 2000 3000 5000 7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 $seed; done; done
 # for D in  7000 8000 9000 10000; do for seed in `seq 1 10`; do python change_shift.py $D 1 0.001 0.01 10000 $seed; done; done
 
@@ -41,8 +41,8 @@ h=int(sys.argv[7])
 
 logging.basicConfig(
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
-    # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_'+str(h)+'_l2.txt',
-                    # filemode='w',
+    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2.txt',
+                    filemode='w',
     level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
     datefmt='%Y/%m/%d %H:%M:%S')
@@ -260,30 +260,43 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
         Loss, acc = 0,0
         train_time = time.time()
 
-        if epoch % 100 == 0 or epoch <= 100:
+        if epoch % 100 == 0:
             logger.info('%d \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
                 epoch, train_time - start_time, lr, train_loss/train_n, train_acc/train_n,Loss, acc)
+            # print(np.sum(np.diag(m_proj)))
+            # print(m_proj)
+            diff = model.first.weight.data - model_init.first.weight.data
+            tmp = torch.matmul(diff,torch.tensor( m_proj,dtype=torch.float ).cuda())
+            # print(epoch, torch.sum(diff**2),torch.sum( model_init.first.weight.data**2), torch.sum(diff**2)/torch.sum( model_init.first.weight.data**2)  )
+            # print(epoch, torch.sum(tmp**2), torch.sum(diff**2 ), torch.sum(tmp**2)/torch.sum(diff**2 ))
+            opt.zero_grad()
             model.eval()
             # print(delta)
         
-        if epoch >= epochs-1:
+        # if epoch >= epochs-1:
+            # print(123)
+        # print(epoch+1,epoch+1 % 1000 == 0)
+        if (epoch+1) % 100 == 0 or epoch >= epochs-1:
             # torch.save(model.state_dict(), PATH)
             # for eps in np.array([i/40 for i in range(1,250)]):
-            for eps in np.array([i*5. for i in range(1,100)])/10+3:
+            for eps in np.array([i*2. for i in range(1,40)])/10:
             # for eps in np.array([i/100+0.2 for i in range(1,80)]+
             #                 [i/10+1 for i in range(10)]+
             #                 [i/10+2 for i in range(10)])*((codim/D)**0.5):
                             # [i/1+2 for i in range(10)]):
-                logging.info(eps)
+                logging.info('%d, %.4f',epoch+1, eps)
                 # eps = eps/10
                 # eps = eps*1000
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='2')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='3')
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
-                test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
+                tmp = test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
+                if tmp < 0.01:
+                    break
 
             delta = attack_fgsm(model, X, y, eps_test, False)
+            opt.zero_grad()
             # print(delta)
             delta = delta.cpu()
             delta = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
@@ -328,27 +341,34 @@ def test(model, attack, epsilon, LOSS,print_=False,method='1'):
         
     logger.info('test \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
             train_time - start_time, 0, train_loss/train_n, train_acc/train_n,Loss, acc)
+    
+    return acc
 
 #codim_seq=np.arange(0,510,50)
 loss_lst=[]
 acc_lst=[]
 n_class=2
-samples=2
+
 # samples=10000
 dummy_scalar=1
 std_dev=1
-method=(sys.argv[2]) # '1': on manifold, '2': off manifold
 epsilon=0.0
 noise=1
 eps_test=float(sys.argv[4])
 D=int(sys.argv[1])
 print(D)
 k=10
-codim=50
+samples=int(int(sys.argv[9])/k)
+
+codim=int(sys.argv[2])
 # m = ortho_group.rvs(dim=D)
 m = np.random.randn(codim,D)/np.sqrt(D)
 
 m_proj = np.linalg.inv(np.matmul(m, m.transpose()) )
+
+# print(np.diag(m_proj))
+# print(np.diag(np.matmul(m, m.transpose()) ))
+
 m_proj = np.matmul(m.transpose(),m_proj)
 m_proj = np.matmul(m_proj, m)
 
@@ -381,7 +401,12 @@ for i in range(k):
 x= np.matmul(x, m[:codim,:])
 
 for i in range(k):
-    shift.append(np.random.randn(D)/np.sqrt(D))
+    if sys.argv[8] == 'const':
+        shift.append(np.random.randn(D)/np.sqrt(D))
+    elif sys.argv[8] == 'codim':
+        shift.append(np.random.randn(D)/np.sqrt(D)*np.sqrt(codim))
+    else:
+        shift.append(np.random.randn(D))
     start = int((i-1)*samples)
     end = int(i*samples)
     for j in range(start,end):
@@ -413,7 +438,7 @@ y_test = to_onehot(y_test, 3)
 print(codim)
 
 train_data=torch.utils.data.TensorDataset(torch.from_numpy(x),y)
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=samples*k, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=100, shuffle=True)
 test_data=torch.utils.data.TensorDataset(torch.from_numpy(x_test),y_test)
 test_loader = torch.utils.data.DataLoader(test_data, batch_size=100, shuffle=False)
 
