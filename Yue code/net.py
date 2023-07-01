@@ -6,7 +6,7 @@ Created on Sat Jul 23 19:58:46 2022
 """
 import torch
 import torch.nn as nn
-from torch import linalg as LA
+# from torch import linalg as LA
 import numpy as np
 
 """ utility functions"""
