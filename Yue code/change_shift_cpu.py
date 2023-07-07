@@ -37,7 +37,8 @@ h=int(sys.argv[7])
 
 logging.basicConfig(
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
-    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2.txt',
+    # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2.txt',
+    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_linf_projection.txt',
                     filemode='w',
     level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
@@ -78,6 +79,7 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
         d = d * factor.view(shape2)
         
         delta.data = d # used for loss computation
+        delta.grad.zero_()
         # manually change this part for on-manifold attack:
     if method == '1':
         delta.detach()
@@ -91,7 +93,7 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     return delta.detach()
 
 
-def attack_fgsm_linf(model, X, y, epsilon,trim,method='2'):
+def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     model.eval()
     model.first.weight.requires_grad = False
     model.second.weight.requires_grad = False
@@ -122,9 +124,9 @@ def attack_fgsm_linf(model, X, y, epsilon,trim,method='2'):
                 d = clamp(d, 0-X, 1-X)
             delta.data = d # used for loss computation
             delta.grad.zero_()
-        all_loss = F.cross_entropy(model(X+delta), y, reduction='none')
-        max_delta[all_loss >= max_loss] = delta.detach()[all_loss >= max_loss]
-        max_loss = torch.max(max_loss, all_loss)
+        all_loss = F.cross_entropy(model(X+delta), y)
+        max_delta = delta.detach()
+        # max_loss = torch.max(max_loss, all_loss)
 
     if method == '1':
         max_delta.detach()
@@ -136,6 +138,54 @@ def attack_fgsm_linf(model, X, y, epsilon,trim,method='2'):
 
     model.train()
     return max_delta
+
+
+def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+    model.eval()
+    model.first.weight.requires_grad = False
+    model.second.weight.requires_grad = False
+    max_loss = torch.zeros(y.shape[0])
+    max_delta = torch.zeros_like(X)
+    
+    alpha = epsilon / 20 * 3
+    attack_iters=20
+    for _ in range(1):
+        delta = torch.zeros_like(X)
+        if trim:
+            delta.data = clamp(delta, 0-X, 1-X)
+        
+        delta.requires_grad = True
+        for _ in range(attack_iters):
+            output = model(X + delta)
+            loss = F.cross_entropy(output, y)
+            loss.backward()
+            grad = delta.grad.detach()
+            if method == '4':
+                grad = torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ))
+            if method == '5':
+                grad.requires_grad = False
+                grad -= torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ))
+
+            d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
+            if trim:
+                d = clamp(d, 0-X, 1-X)
+            delta.data = d # used for loss computation
+            delta.grad.zero_()
+        all_loss = F.cross_entropy(model(X+delta), y)
+        max_delta = delta.detach()
+        # max_loss = torch.max(max_loss, all_loss)
+
+    if method == '1' or method == '4':
+        max_delta.detach()
+        max_delta = torch.matmul( delta,torch.tensor( m_proj,dtype=torch.float ))
+    if method == '3' or method == '5':
+        max_delta.detach()
+        max_delta.requires_grad = False
+        max_delta -= torch.matmul( max_delta,torch.tensor( m_proj,dtype=torch.float ))
+
+    model.train()
+    return max_delta
+
 
 def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method='1'):
     model.eval()
@@ -229,7 +279,7 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             # print(delta)
         
         if epoch >= epochs-1:
-            epss = epss = np.array([i*2./10 for i in range(1,100)]+[i**np.sqrt(D/codim) for i in range(1,100)])
+            epss = np.array([i*2./10 for i in range(1,100)]+[i**np.sqrt(D/codim) for i in range(1,100)])/np.sqrt(D)
             for eps in epss:
                 logging.info('%d, %.4f',epoch+1, eps)
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
@@ -324,7 +374,10 @@ mu=[]
 shift = []
 sign = []
 for i in range(k):
-    mu.append( np.random.randn(codim) )
+    if sys.argv[8] == 'low':
+        mu.append( np.random.randn(codim)*np.sqrt(D)/np.sqrt(codim) )
+    else:
+        mu.append( np.random.randn(codim) )
     sign.append( i % 2)
     start = int((i-1)*samples)
     end = int(i*samples)
@@ -339,8 +392,15 @@ for i in range(k):
         shift.append(np.random.randn(D)/np.sqrt(D))
     elif sys.argv[8] == 'codim':
         shift.append(np.random.randn(D)/np.sqrt(D)*np.sqrt(codim))
-    else:
+    elif sys.argv[8] == 'D':
         shift.append(np.random.randn(D))
+    elif sys.argv[8] == 'low':
+        shift.append(np.random.randn(D))
+    elif sys.argv[8] == 'same_D':
+        if i == 0:
+            shift.append(np.random.randn(D))
+        else:
+            shift.append(shift[0])
     start = int((i-1)*samples)
     end = int(i*samples)
     for j in range(start,end):

@@ -1,8 +1,8 @@
 #!/bin/sh -l
 
-#SBATCH -A qfsong
+#SBATCH -A standby
 #SBATCH --nodes=1 
-#SBATCH --time=24:00:00
+#SBATCH --time=3:59:00
 #SBATCH --job-name ridgeless
 
 # Print the hostname of the compute node on which this job is running.
