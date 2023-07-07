@@ -167,6 +167,13 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
                 grad -= torch.matmul( grad,torch.tensor( m_proj,dtype=torch.float ))
 
             d = torch.clamp(delta + alpha * torch.sign(grad), -epsilon, epsilon)
+            if method == '4':
+                d = torch.matmul( d,torch.tensor( m_proj,dtype=torch.float )) 
+            if method == '5':
+                d = d.detach()
+                d.requires_grad = False
+                d -= torch.matmul( d,torch.tensor( m_proj,dtype=torch.float )) 
+
             if trim:
                 d = clamp(d, 0-X, 1-X)
             delta.data = d # used for loss computation
