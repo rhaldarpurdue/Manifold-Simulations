@@ -6,7 +6,7 @@ Created on Sat Jul 23 19:58:46 2022
 """
 import torch
 import torch.nn as nn
-from torch import linalg as LA
+# from torch import linalg as LA
 import numpy as np
 
 """ utility functions"""
@@ -38,21 +38,21 @@ class two_layer_relu_single_output_mse(nn.Module):
     def __init__(self,xdim,act,h,out=1):
         super().__init__()
         # h=1
-        self.first = nn.Linear(xdim, h, bias=False)
+        self.first = nn.Linear(xdim, h, bias=True)
         if act == 'relu':
-            self.activation = torch.nn.Sigmoid()
+            self.activation = torch.nn.ReLU()
         else:
             self.activation = torch.nn.Sigmoid()
         self.second = nn.Linear(h, out,bias=False)
         self.act = act
         # print(torch.norm(self.first.weight.data,2),torch.std(self.first.weight.data))
-        if h>1:
-            self.first.weight.data = self.first.weight.data/torch.std(self.first.weight.data[0,:])/np.sqrt(xdim)
-            self.first.weight.data[int(h/2):,:] = self.first.weight.data[:int(h/2),:]
-            self.second.weight.data[0,int(h/2):] = -self.second.weight.data[0,:int(h/2)]
-            self.second.weight.data = self.second.weight.data/torch.std(self.second.weight.data)/np.sqrt(h)    
-        else:
-            self.second.weight.data = self.second.weight.data/self.second.weight.data
+        # if h>1:
+        #     self.first.weight.data = self.first.weight.data/torch.std(self.first.weight.data[0,:])/np.sqrt(xdim)
+        #     self.first.weight.data[int(h/2):,:] = self.first.weight.data[:int(h/2),:]
+        #     self.second.weight.data[0,int(h/2):] = -self.second.weight.data[0,:int(h/2)]
+        #     self.second.weight.data = self.second.weight.data/torch.std(self.second.weight.data)/np.sqrt(h)    
+        # else:
+        #     self.second.weight.data = self.second.weight.data/self.second.weight.data
 
         # print(torch.norm(self.first.weight.data,2),torch.std(self.first.weight.data[:,1]))
         print(torch.std(self.first.weight.data[0,:]))
@@ -61,7 +61,10 @@ class two_layer_relu_single_output_mse(nn.Module):
     def forward(self, x):
         X = self.first(x)
         if self.act != 'linear':
-            X = (self.activation(X)-0.5)*2
+            if self.act == 'relu':
+                X = self.activation(X)
+            else:
+                X = (self.activation(X)-0.5)*2
         X = self.second(X)
         return X
 
