@@ -38,7 +38,7 @@ h=int(sys.argv[7])
 logging.basicConfig(
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2.txt',
-    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_linf_projection.txt',
+    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2_projection.txt',
                     filemode='w',
     level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
@@ -93,7 +93,7 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     return delta.detach()
 
 
-def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+def attack_fgsm_(model, X, y, epsilon,trim,method='2'):
     model.eval()
     model.first.weight.requires_grad = False
     model.second.weight.requires_grad = False
@@ -140,7 +140,7 @@ def attack_fgsm(model, X, y, epsilon,trim,method='2'):
     return max_delta
 
 
-def attack_fgsm(model, X, y, epsilon,trim,method='2'):
+def attack_fgsm_(model, X, y, epsilon,trim,method='2'):
     model.eval()
     model.first.weight.requires_grad = False
     model.second.weight.requires_grad = False
@@ -228,7 +228,9 @@ def pgd_robustness(model,train_loader,attack='none',epsilon=0.3,LOSS='ce',method
         test_acc += (output.max(1)[1] == y).sum().item()
         test_loss += loss.item() * y.size(0)
         test_n += y.size(0)
-    return test_loss/test_n, test_acc/test_n
+        delta.detach()
+        # print(epsilon, delta.max(1)[0].mean())
+    return test_loss/test_n, test_acc/test_n, delta.max(1)[0].mean()
 
 
 
@@ -286,7 +288,7 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             # print(delta)
         
         if epoch >= epochs-1:
-            epss = np.array([i*2./10 for i in range(1,100)]+[i**np.sqrt(D/codim) for i in range(1,100)])/np.sqrt(D)
+            epss = np.array([i*2./10 for i in range(1,100)]+[i**np.sqrt(D/codim) for i in range(1,100)])
             for eps in epss:
                 logging.info('%d, %.4f',epoch+1, eps)
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
@@ -332,15 +334,15 @@ def test(model, attack, epsilon, LOSS,print_=False,method='1'):
         train_loss += loss.item() * y.size(0)
         train_n += y.size(0)
 
-    Loss,acc=pgd_robustness(model,test_loader, attack='l2',epsilon=epsilon,method=method)
+    Loss,acc,perturb=pgd_robustness(model,test_loader, attack='l2',epsilon=epsilon,method=method)
     train_time = time.time()
 
     if print_==True:
         tmp = delta.data.cpu().numpy()[:100,]
         print(train_loss/train_n)
         
-    logger.info('test \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
-            train_time - start_time, 0, train_loss/train_n, train_acc/train_n,Loss, acc)
+    logger.info('test \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
+            train_time - start_time, 0, train_loss/train_n, train_acc/train_n,Loss, acc, perturb)
     
     return acc
 
