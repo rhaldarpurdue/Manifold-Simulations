@@ -9,7 +9,6 @@ import torchvision
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader, Dataset
 
-from dataset import load_dataset
 
 from net import *
 import matplotlib.pyplot as plt
