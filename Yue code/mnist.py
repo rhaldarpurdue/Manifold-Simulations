@@ -17,7 +17,8 @@ class Flatten(nn.Module):
 
 # CNN classifier
 def CNN(pad=0):
-    c=math.floor(pad/2)
+    print(pad)
+    c=math.floor(pad[0]/2)
     model = nn.Sequential(
         nn.Conv2d(1, 16, 4, stride=2, padding=1),
         nn.ReLU(),

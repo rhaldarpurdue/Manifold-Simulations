@@ -35,7 +35,7 @@ def cut(y,h,n_classes):
 
     
 class two_layer_relu_single_output_mse(nn.Module):
-    def __init__(self,xdim,act,h,out=1):
+    def __init__(self,xdim,act,h,out=1, norm=1):
         super().__init__()
         # h=1
         self.first = nn.Linear(xdim, h, bias=True)
@@ -45,6 +45,10 @@ class two_layer_relu_single_output_mse(nn.Module):
             self.activation = torch.nn.Sigmoid()
         self.second = nn.Linear(h, out,bias=False)
         self.act = act
+
+        if norm != 1:
+            self.first.weight.data = self.first.weight.data/torch.std(self.first.weight.data[0,:])/np.sqrt(xdim)*norm
+            self.second.weight.data = self.second.weight.data/torch.std(self.second.weight.data)/np.sqrt(h)*norm
         # print(torch.norm(self.first.weight.data,2),torch.std(self.first.weight.data))
         # if h>1:
         #     self.first.weight.data = self.first.weight.data/torch.std(self.first.weight.data[0,:])/np.sqrt(xdim)
