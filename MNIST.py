@@ -140,4 +140,4 @@ fill=0.5 # fill is btw 0-1; corresponding to the pixel values at the border 1=wh
 
 # Training and adv robustness
 mod=robust_train(1e-3, 10,pad=pad,fill=fill)
-_=pgd_attacks(mod,pad=pad,fill=fill)
+_=pgd_attacks(mod,pad=pad,fill=fill,epsilon=epsilon)
