@@ -38,7 +38,7 @@ h=int(sys.argv[7])
 logging.basicConfig(
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[6]+'_linf.txt',
     # filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2.txt',
-    filename='res/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2_projection.txt',
+    filename='res_init_0.01/change_shift'+sys.argv[1]+'_'+sys.argv[2]+'_'+str(h)+'_'+sys.argv[8]+'_'+sys.argv[9]+'_'+sys.argv[6]+'_l2_projection.txt',
                     filemode='w',
     level=logging.INFO,
     format='[%(asctime)s] - %(message)s',
@@ -239,7 +239,7 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
     if LOSS=='mse':
         model=two_layer_relu_single_output_mse(xdim,'relu',h)
     else:
-        model=two_layer_relu_single_output_mse(xdim,'relu',h, n_class)
+        model=two_layer_relu_single_output_mse(xdim,'relu',h, n_class, norm=0.01)
 
     model_init = copy.deepcopy(model)
     criterion = nn.CrossEntropyLoss()
@@ -281,14 +281,22 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
         if epoch % 100 == 0:
             logger.info('%d \t %.1f \t %.4f \t %.4f \t %.4f \t %.4f \t %.4f',
                 epoch, train_time - start_time, lr, train_loss/train_n, train_acc/train_n,Loss, acc)
-            diff = model.first.weight.data - model_init.first.weight.data
-            tmp = torch.matmul(diff,torch.tensor( m_proj,dtype=torch.float ))
+            diff_1 = model.first.weight.data - model_init.first.weight.data
+            diff_2 = model.second.weight.data - model_init.second.weight.data
+            print((diff_1**2).sum()/(model_init.first.weight.data**2).sum(),
+                    (model.first.weight.data**2).sum(),
+                    (model_init.first.weight.data**2).sum() )
+            print((diff_2**2).sum()/(model_init.second.weight.data**2).sum(),
+                    (model.second.weight.data**2).sum(),
+                    (model_init.second.weight.data**2).sum() )
+            tmp = torch.matmul(diff_1,torch.tensor( m_proj,dtype=torch.float ))
+            print( (tmp**2).sum()/(model_init.first.weight.data**2).sum() )
             opt.zero_grad()
             model.eval()
             # print(delta)
         
-        if epoch >= epochs-1:
-            epss = np.array([i*2./10 for i in range(1,100)]+[i**np.sqrt(D/codim) for i in range(1,100)])
+        if epoch >= epochs-1: # or train_loss/train_n<0.001:
+            epss = np.array([i*2./10 for i in range(1,200)]+[i*np.sqrt(D/codim) for i in range(1,100)])
             for eps in epss:
                 logging.info('%d, %.4f',epoch+1, eps)
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='1')
@@ -296,8 +304,9 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
                 test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='3')
                 tmp1 = test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='4')
                 tmp = test(model=model, attack=attack, epsilon=eps, LOSS=LOSS,method='5')
-                if tmp < 0.01 and tmp1 < 0.01:
+                if tmp1 < 0.001:
                     break
+                # break
 
             delta = attack_fgsm(model, X, y, eps_test, False)
             opt.zero_grad()
@@ -305,6 +314,7 @@ def train(lr,epochs,lr_type='flat',attack='none',epsilon=0.3,LOSS='ce'):
             delta = torch.matmul(delta, torch.tensor(m_proj,dtype=torch.float))
             logging.info('%.4f',sum(delta[0]**2)/(eps_test**2))
             logging.info('%d',D)
+            break
 
         model.train()
     
@@ -405,9 +415,9 @@ for i in range(k):
         shift.append(np.random.randn(D))
     elif sys.argv[8] == 'low':
         shift.append(np.random.randn(D))
-    elif sys.argv[8] == 'same_D':
+    elif sys.argv[8] == 'same':
         if i == 0:
-            shift.append(np.random.randn(D))
+            shift.append(np.random.randn(codim))
         else:
             shift.append(shift[0])
     start = int((i-1)*samples)
